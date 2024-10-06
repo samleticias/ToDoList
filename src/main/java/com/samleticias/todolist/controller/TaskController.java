@@ -2,6 +2,9 @@ package com.samleticias.todolist.controller;
 
 import com.samleticias.todolist.entities.Task;
 import com.samleticias.todolist.repositories.TaskRepository;
+import com.samleticias.todolist.exceptions.InvalidDateException;
+import com.samleticias.todolist.exceptions.PermissionDeniedException;
+import com.samleticias.todolist.exceptions.TaskNotFoundException;
 import com.samleticias.todolist.util.PropertyCopyUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,17 +24,17 @@ public class TaskController {
     private TaskRepository taskRepository;
 
     @PostMapping("/")
-    public ResponseEntity createTask(@RequestBody Task task, HttpServletRequest request){
+    public ResponseEntity createTask(@RequestBody Task task, HttpServletRequest request) throws InvalidDateException {
         var idUser = request.getAttribute("idUser");
         task.setIdUser((UUID) idUser);
 
         var currentDate = LocalDateTime.now();
         if (currentDate.isAfter(task.getStartAt()) || currentDate.isAfter(task.getFinishAt())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Data inválida.");
+            throw new InvalidDateException("As datas de início e fim devem ser futuras.");
         }
 
         if (task.getStartAt().isAfter(task.getFinishAt())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Data inválida.");
+            throw new InvalidDateException("A data de início não pode ser posterior à data de fim.");
         }
         var newTask = this.taskRepository.save(task);
         return ResponseEntity.status(HttpStatus.OK).body(newTask);
@@ -44,28 +47,29 @@ public class TaskController {
         return tasks;
     }
 
-    @GetMapping("/all")
-    public List<Task> getAllTasks() {
-        return taskRepository.findAll();
-    }
-
     @PutMapping("/{id}")
-    public ResponseEntity updateTask(@RequestBody Task taskModel, HttpServletRequest request, @PathVariable UUID id ){
+    public ResponseEntity updateTask(@RequestBody Task taskModel, HttpServletRequest request, @PathVariable UUID id ) throws TaskNotFoundException, PermissionDeniedException {
 
-        var task = this.taskRepository.findById(id).orElse(null);
+        var task = this.taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
 
-        if (task==null) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Tarefa não encontrada.");
-        }
         var idUser = request.getAttribute("idUser");
 
         if (!task.getIdUser().equals(idUser)) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Sem permissão.");
+            throw new PermissionDeniedException(id);
         }
 
         PropertyCopyUtils.copyNonNullProperties(taskModel, task);
         var taskUpdated = this.taskRepository.save(task);
 
         return ResponseEntity.ok().body(taskUpdated);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTask(@PathVariable UUID id) {
+        if (!taskRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        taskRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
 }
