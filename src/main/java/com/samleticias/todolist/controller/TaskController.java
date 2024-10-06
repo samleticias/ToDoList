@@ -44,6 +44,11 @@ public class TaskController {
         return tasks;
     }
 
+    @GetMapping("/all")
+    public List<Task> getAllTasks() {
+        return taskRepository.findAll();
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity updateTask(@RequestBody Task taskModel, HttpServletRequest request, @PathVariable UUID id ){
 
